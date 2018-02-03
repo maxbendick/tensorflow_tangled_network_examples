@@ -61,12 +61,20 @@ digit_encoded = tf.layers.dense(
     activation=tf.nn.relu)
 digit_encoded = tf.layers.dense(
     inputs=digit_encoded,
+    units=64,
+    activation=tf.nn.relu)
+digit_encoded = tf.layers.dense(
+    inputs=digit_encoded,
     units=num_fuzzy_digit_cells,
     activation=tf.nn.relu)
 
 
 # Math ops, just plus1 for now
 plus1_output = (binary_encoded + digit_encoded) / 2
+plus1_output = tf.layers.dense(
+    inputs=plus1_output,
+    units=num_fuzzy_digit_cells,
+    activation=tf.nn.relu)
 plus1_output = tf.layers.dense(
     inputs=plus1_output,
     units=num_fuzzy_digit_cells,
@@ -130,6 +138,10 @@ digit_decoded = tf.layers.dense(
     activation=tf.nn.relu)
 digit_decoded = tf.layers.dense(
     inputs=digit_decoded,
+    units=64,
+    activation=tf.nn.relu)
+digit_decoded = tf.layers.dense(
+    inputs=digit_decoded,
     units=10,
     activation=tf.nn.sigmoid)
 
@@ -140,7 +152,9 @@ digit_loss = tf.nn.softmax_cross_entropy_with_logits(
 
 
 
-total_loss = (binary_loss + digit_loss) / 2
+# total_loss = (binary_loss + digit_loss) / 2
+total_loss = digit_loss
+
 
 train = tf.train.AdamOptimizer().minimize(total_loss)
 
@@ -212,7 +226,7 @@ with tf.Session() as sess:
             print(digit_prediction_val - answers)
 
 
-        if i > 10000:
+        if i > 20000:
             break
 
         i += 1
