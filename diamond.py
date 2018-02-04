@@ -6,6 +6,21 @@ import random
 
 num_fuzzy_digit_cells = 12
 
+def dense_relu_stack(input, units_list, final_activation=tf.nn.relu):
+    output = input
+    for i, units in enumerate(units_list):
+
+        is_final_layer = i == len(units_list) - 1
+        activation = final_activation if is_final_layer else tf.nn.relu
+
+        output = tf.layers.dense(
+            inputs=output,
+            units=units,
+            activation=activation)
+
+    return output
+
+
 binary_input = tf.placeholder(
     dtype=tf.float32,
     shape=[None, 4],
@@ -28,85 +43,20 @@ digit_label = tf.placeholder(
 
 
 # Encoder for the binary input
-binary_encoded = tf.layers.dense(
-    inputs=binary_input,
-    units=64,
-    activation=tf.nn.relu)
-binary_encoded = tf.layers.dense(
-    inputs=binary_encoded,
-    units=64,
-    activation=tf.nn.relu)
-binary_encoded = tf.layers.dense(
-    inputs=binary_encoded,
-    units=64,
-    activation=tf.nn.relu)
-binary_encoded = tf.layers.dense(
-    inputs=binary_encoded,
-    units=num_fuzzy_digit_cells,
-    activation=tf.nn.relu)
-
+binary_encoded = dense_relu_stack(binary_input, [64, 64, num_fuzzy_digit_cells])
 
 # Encoder for the digit input
-digit_encoded = tf.layers.dense(
-    inputs=digit_input,
-    units=64,
-    activation=tf.nn.relu)
-digit_encoded = tf.layers.dense(
-    inputs=digit_encoded,
-    units=64,
-    activation=tf.nn.relu)
-digit_encoded = tf.layers.dense(
-    inputs=digit_encoded,
-    units=64,
-    activation=tf.nn.relu)
-digit_encoded = tf.layers.dense(
-    inputs=digit_encoded,
-    units=64,
-    activation=tf.nn.relu)
-digit_encoded = tf.layers.dense(
-    inputs=digit_encoded,
-    units=num_fuzzy_digit_cells,
-    activation=tf.nn.relu)
+digit_encoded = dense_relu_stack(digit_input, [64, 64, num_fuzzy_digit_cells])
 
 
-# Math ops, just plus1 for now
-plus1_output = (binary_encoded + digit_encoded) / 2
-plus1_output = tf.layers.dense(
-    inputs=plus1_output,
-    units=num_fuzzy_digit_cells,
-    activation=tf.nn.relu)
-plus1_output = tf.layers.dense(
-    inputs=plus1_output,
-    units=num_fuzzy_digit_cells,
-    activation=tf.nn.relu)
-plus1_output = tf.layers.dense(
-    inputs=plus1_output,
-    units=num_fuzzy_digit_cells,
-    activation=tf.nn.relu)
-plus1_output = tf.layers.dense(
-    inputs=plus1_output,
-    units=num_fuzzy_digit_cells,
-    activation=tf.nn.relu)
+plus1_output = dense_relu_stack((binary_encoded + digit_encoded) / 2,
+                                units_list=[num_fuzzy_digit_cells] * 2)
+
 math_output = plus1_output
 
 
 # Binary decoder
-binary_decoded = tf.layers.dense(
-    inputs=math_output,
-    units=64,
-    activation=tf.nn.relu)
-binary_decoded = tf.layers.dense(
-    inputs=binary_decoded,
-    units=64,
-    activation=tf.nn.relu)
-binary_decoded = tf.layers.dense(
-    inputs=binary_decoded,
-    units=64,
-    activation=tf.nn.relu)
-binary_decoded = tf.layers.dense(
-    inputs=binary_decoded,
-    units=4,
-    activation=tf.nn.sigmoid)
+binary_decoded = dense_relu_stack(math_output, [64, 64, 4], final_activation=tf.nn.sigmoid)
 
 binary_prediction = tf.argmax(binary_decoded)
 
@@ -114,47 +64,18 @@ binary_loss = tf.losses.mean_squared_error(
     predictions=binary_decoded,
     labels=binary_label)
 
-# binary_loss = tf.nn.sigmoid_cross_entropy_with_logits(
-#     logits=binary_decoded,
-#     labels=binary_label)
-
-# binary_loss = tf.nn.softmax_cross_entropy_with_logits(
-#     logits=binary_decoded,
-#     labels=binary_label)
-
 
 # Digit decoder
-digit_decoded = tf.layers.dense(
-    inputs=math_output,
-    units=64,
-    activation=tf.nn.relu)
-digit_decoded = tf.layers.dense(
-    inputs=digit_decoded,
-    units=64,
-    activation=tf.nn.relu)
-digit_decoded = tf.layers.dense(
-    inputs=digit_decoded,
-    units=64,
-    activation=tf.nn.relu)
-digit_decoded = tf.layers.dense(
-    inputs=digit_decoded,
-    units=64,
-    activation=tf.nn.relu)
-digit_decoded = tf.layers.dense(
-    inputs=digit_decoded,
-    units=10,
-    activation=tf.nn.sigmoid)
+digit_decoded = dense_relu_stack(math_output, [64, 64, 10], final_activation=tf.nn.sigmoid)
 
 digit_prediction = tf.argmax(digit_decoded, 1)
-digit_loss = tf.nn.softmax_cross_entropy_with_logits(
-    logits=digit_decoded,
+
+digit_loss = tf.losses.mean_squared_error(
+    predictions=digit_decoded,
     labels=digit_label)
 
 
-
-# total_loss = (binary_loss + digit_loss) / 2
-total_loss = digit_loss
-
+total_loss = (binary_loss + digit_loss) / 2
 
 train = tf.train.AdamOptimizer().minimize(total_loss)
 
@@ -214,19 +135,22 @@ with tf.Session() as sess:
             binary_label: batch['binary_label'],
             digit_label:  batch['digit_label'],
         }
-        _, loss_value, digit_prediction_val = sess.run([train, total_loss, digit_prediction], feed_dict)
+        _, loss_value, digit_prediction_val, digit_label_val = \
+            sess.run([train, total_loss, digit_prediction, digit_label], feed_dict)
 
         if i % 300 == 0 or i == 5 or i == 10 or i == 25 or i == 50:
-            print('loss @', i, ':', loss_value[64 - 1])
+            # print('loss @', i, ':', loss_value[64 - 1])
+            print('loss @', i, ':', loss_value)
 
         if i % 1000 == 0:
             answers = np.argmax(batch['digit_input'], 1)
-            # print(answers)
-            # print(digit_prediction_val)
             print(digit_prediction_val - answers)
 
 
-        if i > 20000:
+        if i > 20000 or loss_value < 1e-5:
+            print('\ntraining finished!\n')
+            print('loss @', i, ':', loss_value)
+            print(digit_prediction_val - np.argmax(digit_label_val, 1))
             break
 
         i += 1
